@@ -87,7 +87,7 @@ jobs:
           if ! sudo -u builder -E HOME=/home/builder git remote | grep -q "^github$"; then
             sudo -u builder -E HOME=/home/builder git remote add github https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
           fi
-          # GitHub (All) - match Justfile
+          # GitHub (All)
           sudo -u builder -E HOME=/home/builder git checkout dev 2>/dev/null
           sudo -u builder -E HOME=/home/builder git add .
           sudo -u builder -E HOME=/home/builder git commit -m "update: ${{ steps.versions.outputs.latest }}" || true
@@ -96,30 +96,16 @@ jobs:
       - name: Configure AUR remote and push to AUR
         if: steps.versions.outputs.current != steps.versions.outputs.latest
         run: |
+          #!/usr/bin/env bash
           set -x
-          # Configure AUR remote
-          if ! sudo -u builder -E HOME=/home/builder git remote | grep -q "^origin$"; then
-            echo "Adding AUR remote..."
-            sudo -u builder -E HOME=/home/builder git remote add origin ssh://aur@aur.archlinux.org/pi-bin.git
-          fi
-          echo "Available remotes:"
-          sudo -u builder -E HOME=/home/builder git remote -v
-          echo "Available branches:"
-          sudo -u builder -E HOME=/home/builder git branch -a
-          # AUR (Subset) - match Justfile
-          echo "Checking out master..."
-          sudo -u builder -E HOME=/home/builder git checkout master 2>/dev/null || echo "Master checkout failed or already on master"
-          echo "Checking out files from dev..."
-          sudo -u builder -E HOME=/home/builder git checkout dev -- PKGBUILD .SRCINFO || { echo "Failed to checkout files from dev branch"; exit 1; }
+
+          sudo -u builder -E HOME=/home/builder git checkout master 2>/dev/null
+          sudo -u builder -E HOME=/home/builder git checkout dev -- PKGBUILD .SRCINFO
           sudo -u builder -E HOME=/home/builder git add PKGBUILD .SRCINFO
-          if ! sudo -u builder -E HOME=/home/builder git diff-index --quiet HEAD --; then
-            echo "Changes detected, committing..."
-            sudo -u builder -E HOME=/home/builder git commit -m "aur: ${{ steps.versions.outputs.latest }}"
-            echo "Pushing to AUR..."
-            sudo -u builder -E HOME=/home/builder git push -u origin master
-          else
-            echo "AUR up to date."
-          fi
+
+          sudo -u builder -E HOME=/home/builder git commit -m "aur: ${{ steps.versions.outputs.latest }}"
+          sudo -u builder -E HOME=/home/builder git push -u origin master
+
 
       - name: Summary
         run: |
