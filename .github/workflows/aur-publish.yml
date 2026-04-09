@@ -99,7 +99,8 @@ jobs:
           #!/usr/bin/env bash
           set -x
 
-          sudo -u builder -E HOME=/home/builder git checkout master 2>/dev/null
+          # Checkout master (create if doesn't exist, suppress error output)
+          sudo -u builder -E HOME=/home/builder git checkout master 2>/dev/null || sudo -u builder -E HOME=/home/builder git checkout -b master
           sudo -u builder -E HOME=/home/builder git checkout dev -- PKGBUILD .SRCINFO
           sudo -u builder -E HOME=/home/builder git add PKGBUILD .SRCINFO
           if ! sudo -u builder -E HOME=/home/builder git diff-index --quiet HEAD --; then
