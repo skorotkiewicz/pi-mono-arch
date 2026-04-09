@@ -31,8 +31,8 @@ jobs:
 
       - name: Configure Git for builder user
         run: |
-          sudo -u builder git config --global user.name "github-actions[bot]"
-          sudo -u builder git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          sudo -u builder -E HOME=/home/builder git config --global user.name "github-actions[bot]"
+          sudo -u builder -E HOME=/home/builder git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Setup SSH for AUR
         run: |
@@ -76,32 +76,43 @@ jobs:
         run: |
           sudo -u builder -E HOME=/home/builder makepkg -f
 
-      - name: Push to AUR
-        if: steps.versions.outputs.current != steps.versions.outputs.latest
-        run: |
-          # Run all git commands as builder with proper HOME for SSH config
-          if ! sudo -u builder -E HOME=/home/builder git remote | grep -q "^aur$"; then
-            sudo -u builder -E HOME=/home/builder git remote add aur ssh://aur@aur.archlinux.org/pi-bin.git
-          fi
-          sudo -u builder -E HOME=/home/builder git checkout -b aur-deploy || sudo -u builder -E HOME=/home/builder git checkout aur-deploy
-          sudo -u builder -E HOME=/home/builder git add PKGBUILD .SRCINFO
-          sudo -u builder -E HOME=/home/builder git commit -m "aur: ${{ steps.versions.outputs.latest }}" || echo "No changes to commit"
-          sudo -u builder -E HOME=/home/builder git push aur aur-deploy:master --force
-
       - name: Push to GitHub
         if: steps.versions.outputs.current != steps.versions.outputs.latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sudo -u builder -E HOME=/home/builder git checkout master || sudo -u builder -E HOME=/home/builder git checkout -b master
+          # Configure GitHub remote
+          if ! sudo -u builder -E HOME=/home/builder git remote | grep -q "^github$"; then
+            sudo -u builder -E HOME=/home/builder git remote add github https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+          fi
+          # GitHub (All) - match Justfile
+          sudo -u builder -E HOME=/home/builder git checkout dev 2>/dev/null
+          sudo -u builder -E HOME=/home/builder git add .
+          sudo -u builder -E HOME=/home/builder git commit -m "update: ${{ steps.versions.outputs.latest }}" || true
+          sudo -u builder -E HOME=/home/builder git push -u github dev
+
+      - name: Configure AUR remote and push to AUR
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        run: |
+          # Configure AUR remote
+          if ! sudo -u builder -E HOME=/home/builder git remote | grep -q "^origin$"; then
+            sudo -u builder -E HOME=/home/builder git remote add origin ssh://aur@aur.archlinux.org/pi-bin.git
+          fi
+          # AUR (Subset) - match Justfile
+          sudo -u builder -E HOME=/home/builder git checkout master 2>/dev/null
+          sudo -u builder -E HOME=/home/builder git checkout dev -- PKGBUILD .SRCINFO
           sudo -u builder -E HOME=/home/builder git add PKGBUILD .SRCINFO
-          sudo -u builder -E HOME=/home/builder git commit -m "update: ${{ steps.versions.outputs.latest }}" || echo "No changes to commit"
-          sudo -u builder -E HOME=/home/builder git push https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git master
+          if ! sudo -u builder -E HOME=/home/builder git diff-index --quiet HEAD --; then
+            sudo -u builder -E HOME=/home/builder git commit -m "aur: ${{ steps.versions.outputs.latest }}"
+            sudo -u builder -E HOME=/home/builder git push -u origin master
+          else
+            echo "AUR up to date."
+          fi
 
       - name: Summary
         run: |
           if [ "${{ steps.versions.outputs.current }}" = "${{ steps.versions.outputs.latest }}" ]; then
             echo "No new version available. Current: ${{ steps.versions.outputs.current }}"
           else
-            echo "Published version ${{ steps.versions.outputs.latest }} to AUR"
+            echo "Published version ${{ steps.versions.outputs.latest }} to AUR and GitHub"
           fi
