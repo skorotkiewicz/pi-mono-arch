@@ -1,0 +1,98 @@
+name: Check Version and Publish to AUR
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-and-publish:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git openssh jq curl just pacman-contrib
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+          cat << 'EOF' > ~/.ssh/config
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur_key
+            User aur
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 ~/.ssh/config
+          eval $(ssh-agent -s)
+          ssh-add ~/.ssh/aur_key
+
+      - name: Get current and latest versions
+        id: versions
+        run: |
+          current_ver=$(grep -oP '^pkgver=\K.*' PKGBUILD)
+          latest_ver=$(curl -s https://api.github.com/repos/badlogic/pi-mono/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          echo "current=$current_ver" >> $GITHUB_OUTPUT
+          echo "latest=$latest_ver" >> $GITHUB_OUTPUT
+          echo "Current version: $current_ver"
+          echo "Latest version: $latest_ver"
+
+      - name: Update PKGBUILD and checksums
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        run: |
+          latest_ver="${{ steps.versions.outputs.latest }}"
+          echo "Updating to $latest_ver..."
+          sed -i "s/^pkgver=.*/pkgver=$latest_ver/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          updpkgsums
+          makepkg --printsrcinfo > .SRCINFO
+          echo "PKGBUILD and .SRCINFO updated to version $latest_ver."
+
+      - name: Build package
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        run: |
+          makepkg -f
+
+      - name: Push to AUR
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        run: |
+          if ! git remote | grep -q "^aur$"; then
+            git remote add aur ssh://aur@aur.archlinux.org/pi-bin.git
+          fi
+          git checkout -b aur-deploy || git checkout aur-deploy
+          git add PKGBUILD .SRCINFO
+          git commit -m "aur: ${{ steps.versions.outputs.latest }}" || echo "No changes to commit"
+          git push aur aur-deploy:master --force
+
+      - name: Push to GitHub
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git checkout master || git checkout -b master
+          git add PKGBUILD .SRCINFO
+          git commit -m "update: ${{ steps.versions.outputs.latest }}" || echo "No changes to commit"
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git master
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.versions.outputs.current }}" = "${{ steps.versions.outputs.latest }}" ]; then
+            echo "No new version available. Current: ${{ steps.versions.outputs.current }}"
+          else
+            echo "Published version ${{ steps.versions.outputs.latest }} to AUR"
+          fi

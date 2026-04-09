@@ -2,6 +2,50 @@
 default:
     @just --list
 
+# Generate SSH key pair for AUR
+generate-ssh-key:
+    #!/usr/bin/env bash
+    set -e
+    echo "Generating SSH key pair for AUR..."
+    ssh-keygen -t ed25519 -C "aur-pi-bin-$(date +%Y-%m-%d)" -f ./aur_ssh_key -N ""
+    echo ""
+    echo "=== PUBLIC KEY (add to AUR account) ==="
+    cat ./aur_ssh_key.pub
+    echo ""
+    echo "=== PRIVATE KEY (add to GitHub Secret as AUR_SSH_PRIVATE_KEY) ==="
+    cat ./aur_ssh_key
+    echo ""
+    echo "Instructions:"
+    echo "1. Go to https://aur.archlinux.org/account/ and add the PUBLIC key"
+    echo "2. Go to your GitHub repo Settings > Secrets and add the PRIVATE key as AUR_SSH_PRIVATE_KEY"
+    echo "3. Delete the key files after adding them: just clean-ssh-key"
+
+# Clean up generated SSH key files
+clean-ssh-key:
+    rm -f ./aur_ssh_key ./aur_ssh_key.pub
+    echo "SSH key files cleaned up"
+
+# Setup SSH key from environment variable (for CI)
+setup-ssh-from-env:
+    #!/usr/bin/env bash
+    if [ -z "${AUR_SSH_PRIVATE_KEY}" ]; then
+        echo "Error: AUR_SSH_PRIVATE_KEY environment variable not set"
+        exit 1
+    fi
+    mkdir -p ~/.ssh
+    echo "${AUR_SSH_PRIVATE_KEY}" > ~/.ssh/aur_key
+    chmod 600 ~/.ssh/aur_key
+    cat << 'EOF' > ~/.ssh/config
+    Host aur.archlinux.org
+        IdentityFile ~/.ssh/aur_key
+        User aur
+        StrictHostKeyChecking accept-new
+    EOF
+    chmod 600 ~/.ssh/config
+    eval $(ssh-agent -s)
+    ssh-add ~/.ssh/aur_key
+    echo "SSH key configured for AUR"
+
 # Check for updates from GitHub
 check:
     #!/usr/bin/env bash
@@ -56,7 +100,7 @@ push: build
     git checkout master 2>/dev/null
     git checkout dev -- PKGBUILD .SRCINFO
     git add PKGBUILD .SRCINFO
-    
+
     if ! git diff-index --quiet HEAD --; then
         git commit -m "aur: $(grep -oP '^pkgver=\K.*' PKGBUILD)"
         git push -u origin master
@@ -65,7 +109,7 @@ push: build
     fi
 
     git checkout dev
-    
+
 # Clean build artifacts
 clean:
     rm -rf src/ pkg/ *.tar.gz *.tar.zst
