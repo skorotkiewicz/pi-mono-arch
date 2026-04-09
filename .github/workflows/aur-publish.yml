@@ -104,10 +104,12 @@ jobs:
           sudo -u builder -E HOME=/home/builder git checkout dev -- PKGBUILD .SRCINFO
           sudo -u builder -E HOME=/home/builder git add PKGBUILD .SRCINFO
 
-
-          sudo -u builder -E HOME=/home/builder git commit -m "aur: ${{ steps.versions.outputs.latest }}"
-          sudo -u builder -E HOME=/home/builder git push -u origin master
-
+          if ! sudo -u builder -E HOME=/home/builder git diff-index --quiet HEAD --; then
+            sudo -u builder -E HOME=/home/builder git commit -m "aur: ${{ steps.versions.outputs.latest }}"
+            sudo -u builder -E HOME=/home/builder git push -u origin master
+          else
+            echo "AUR up to date."
+          fi
 
       - name: Summary
         run: |
