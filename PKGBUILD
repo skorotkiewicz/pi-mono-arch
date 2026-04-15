@@ -1,7 +1,7 @@
 # Maintainer: Sebastian Korotkiewicz <skorotkiewicz@gmail.com>
 
 pkgname=pi-bin
-pkgver=0.67.1
+pkgver=0.67.2
 pkgrel=1
 pkgdesc="AI coding agent for the terminal — minimal, extensible and optimized for tool-use (pi-mono)"
 arch=('x86_64' 'aarch64')
@@ -16,8 +16,8 @@ conflicts=('pi')
 source_x86_64=("pi-linux-x64-${pkgver}-${pkgrel}.tar.gz::https://github.com/badlogic/pi-mono/releases/download/v${pkgver}/pi-linux-x64.tar.gz")
 source_aarch64=("pi-linux-arm64-${pkgver}-${pkgrel}.tar.gz::https://github.com/badlogic/pi-mono/releases/download/v${pkgver}/pi-linux-arm64.tar.gz")
 
-sha256sums_x86_64=('21d71fd822f2fc000330dbda17eaaac507570ce8e45d19eac154dc1cb996eec8')
-sha256sums_aarch64=('b2d659b974501aa79865c8a9d150a1f4c307bd5699b468dfba4e84f35aa92ed1')
+sha256sums_x86_64=('3d9cc42a08a39ab2bc8efbb8e8c9281d0b351bbd8d449a70180db05362f857c1')
+sha256sums_aarch64=('87d9086997172231c68ae52a4918dea9cf95703503e270ccac1b20680c709186')
 
 package() {
     cd "${srcdir}/pi"
