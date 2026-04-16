@@ -1,48 +1,19 @@
-# Maintainer: Sebastian Korotkiewicz <skorotkiewicz@gmail.com>
+pkgbase = pi-bin
+	pkgdesc = AI coding agent for the terminal — minimal, extensible and optimized for tool-use (pi-mono)
+	pkgver = 0.67.6
+	pkgrel = 1
+	url = https://github.com/badlogic/pi-mono
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	depends = glibc
+	optdepends = tmux: for background bash capabilities
+	provides = pi
+	conflicts = pi
+	options = !strip
+	source_x86_64 = pi-linux-x64-0.67.6-1.tar.gz::https://github.com/badlogic/pi-mono/releases/download/v0.67.6/pi-linux-x64.tar.gz
+	sha256sums_x86_64 = 3baf75de6e3d3ff378552f334cc46b6da832df16355a7e07a98334277471047b
+	source_aarch64 = pi-linux-arm64-0.67.6-1.tar.gz::https://github.com/badlogic/pi-mono/releases/download/v0.67.6/pi-linux-arm64.tar.gz
+	sha256sums_aarch64 = d24f028deb2a0c6cfca27336d9226384aae8a68f655ba7f095c9480a44e30a0d
 
-pkgname=pi-bin
-pkgver=0.67.1
-pkgrel=1
-pkgdesc="AI coding agent for the terminal — minimal, extensible and optimized for tool-use (pi-mono)"
-arch=('x86_64' 'aarch64')
-url="https://github.com/badlogic/pi-mono"
-license=('MIT')
-depends=('glibc')
-options=(!strip)
-optdepends=('tmux: for background bash capabilities')
-provides=('pi')
-conflicts=('pi')
-
-source_x86_64=("pi-linux-x64-${pkgver}-${pkgrel}.tar.gz::https://github.com/badlogic/pi-mono/releases/download/v${pkgver}/pi-linux-x64.tar.gz")
-source_aarch64=("pi-linux-arm64-${pkgver}-${pkgrel}.tar.gz::https://github.com/badlogic/pi-mono/releases/download/v${pkgver}/pi-linux-arm64.tar.gz")
-
-sha256sums_x86_64=('21d71fd822f2fc000330dbda17eaaac507570ce8e45d19eac154dc1cb996eec8')
-sha256sums_aarch64=('b2d659b974501aa79865c8a9d150a1f4c307bd5699b468dfba4e84f35aa92ed1')
-
-package() {
-    cd "${srcdir}/pi"
-
-    # Create installation directories
-    install -d "${pkgdir}/usr/lib/pi"
-    install -d "${pkgdir}/usr/bin"
-    install -d "${pkgdir}/usr/share/doc/pi"
-
-    # Core binary and runtime assets
-    cp -r theme "${pkgdir}/usr/lib/pi/"
-    install -m755 pi "${pkgdir}/usr/lib/pi/pi"
-    install -m644 photon_rs_bg.wasm "${pkgdir}/usr/lib/pi/photon_rs_bg.wasm"
-    install -m644 package.json "${pkgdir}/usr/lib/pi/package.json"
-
-    # Symlink binary to /usr/bin
-    ln -s "/usr/lib/pi/pi" "${pkgdir}/usr/bin/pi"
-
-    # Documentation and examples
-    cp -r docs/* "${pkgdir}/usr/share/doc/pi/"
-    cp -r examples "${pkgdir}/usr/share/doc/pi/"
-    install -m644 README.md "${pkgdir}/usr/share/doc/pi/README.md"
-    install -m644 CHANGELOG.md "${pkgdir}/usr/share/doc/pi/CHANGELOG.md"
-
-    # License (MIT as specified in package.json)
-    install -d "${pkgdir}/usr/share/licenses/${pkgname}"
-    echo "MIT License" > "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
-}
+pkgname = pi-bin
