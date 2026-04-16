@@ -6,19 +6,21 @@ on:
   workflow_dispatch:
 
 jobs:
-  check-and-publish:
+  check-and-build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     container:
       image: archlinux:base-devel
+    outputs:
+      changed: ${{ steps.versions.outputs.changed }}
+      latest: ${{ steps.versions.outputs.latest }}
 
     steps:
       - name: Install dependencies and create builder user
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm git openssh jq curl just pacman-contrib sudo
-          # Create builder user for makepkg (cannot run as root)
+          pacman -S --noconfirm git openssh jq curl pacman-contrib sudo
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
@@ -28,93 +30,76 @@ jobs:
           fetch-depth: 0
 
       - name: Set ownership for builder user
-        run: |
-          chown -R builder:builder $GITHUB_WORKSPACE
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
 
       - name: Configure Git for builder user
         run: |
           sudo -u builder -E HOME=/home/builder git config --global user.name "github-actions[bot]"
           sudo -u builder -E HOME=/home/builder git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Setup SSH for AUR
-        run: |
-          # Setup SSH in builder's home directory
-          mkdir -p /home/builder/.ssh
-          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > /home/builder/.ssh/aur_key
-          chmod 600 /home/builder/.ssh/aur_key
-          chown -R builder:builder /home/builder/.ssh
-          cat << 'EOF' > /home/builder/.ssh/config
-          Host aur.archlinux.org
-            IdentityFile ~/.ssh/aur_key
-            User aur
-            StrictHostKeyChecking accept-new
-          EOF
-          chmod 600 /home/builder/.ssh/config
-          chown builder:builder /home/builder/.ssh/config
-
       - name: Get current and latest versions
         id: versions
         run: |
           current_ver=$(grep -oP '^pkgver=\K.*' PKGBUILD)
-          latest_ver=$(curl -s https://api.github.com/repos/badlogic/pi-mono/releases/latest | jq -r '.tag_name' | sed 's/^v//')
-          echo "current=$current_ver" >> $GITHUB_OUTPUT
-          echo "latest=$latest_ver" >> $GITHUB_OUTPUT
+          latest_ver=$(curl -fsSL https://api.github.com/repos/badlogic/pi-mono/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          changed=false
+          if [ "$current_ver" != "$latest_ver" ]; then
+            changed=true
+          fi
+          echo "current=$current_ver" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest_ver" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
           echo "Current version: $current_ver"
           echo "Latest version: $latest_ver"
 
       - name: Update PKGBUILD and checksums
-        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        if: steps.versions.outputs.changed == 'true'
         run: |
           latest_ver="${{ steps.versions.outputs.latest }}"
-          echo "Updating to $latest_ver..."
           sed -i "s/^pkgver=.*/pkgver=$latest_ver/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          # Run updpkgsums and makepkg as builder user in the workspace
-          sudo -u builder -E HOME=/home/builder bash -c 'updpkgsums && makepkg --printsrcinfo > .SRCINFO'
-          echo "PKGBUILD and .SRCINFO updated to version $latest_ver."
+          sudo -u builder -E HOME=/home/builder bash -lc 'updpkgsums && makepkg --printsrcinfo > .SRCINFO'
 
       - name: Build package
-        if: steps.versions.outputs.current != steps.versions.outputs.latest
-        run: |
-          sudo -u builder -E HOME=/home/builder makepkg -f
+        if: steps.versions.outputs.changed == 'true'
+        run: sudo -u builder -E HOME=/home/builder bash -lc 'makepkg -f'
 
-      - name: Push to GitHub
-        if: steps.versions.outputs.current != steps.versions.outputs.latest
+      - name: Push updated packaging to GitHub
+        if: steps.versions.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Configure GitHub remote
-          if ! sudo -u builder -E HOME=/home/builder git remote | grep -q "^github$"; then
-            sudo -u builder -E HOME=/home/builder git remote add github https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
-          fi
-          # GitHub (All)
-          sudo -u builder -E HOME=/home/builder git checkout dev 2>/dev/null
-          sudo -u builder -E HOME=/home/builder git add .
-          sudo -u builder -E HOME=/home/builder git commit -m "update: ${{ steps.versions.outputs.latest }}" || true
-          sudo -u builder -E HOME=/home/builder git push -u github dev
-
-      - name: Configure AUR remote and push to AUR
-        if: steps.versions.outputs.current != steps.versions.outputs.latest
-        run: |
-          #!/usr/bin/env bash
-          set -x
-
-          # Checkout master (create if doesn't exist, suppress error output)
-          sudo -u builder -E HOME=/home/builder git checkout master 2>/dev/null || sudo -u builder -E HOME=/home/builder git checkout -b master
-          sudo -u builder -E HOME=/home/builder git checkout dev -- PKGBUILD .SRCINFO
+          sudo -u builder -E HOME=/home/builder git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          sudo -u builder -E HOME=/home/builder git checkout dev
           sudo -u builder -E HOME=/home/builder git add PKGBUILD .SRCINFO
-
-          if ! sudo -u builder -E HOME=/home/builder git diff-index --quiet HEAD --; then
-            sudo -u builder -E HOME=/home/builder git commit -m "aur: ${{ steps.versions.outputs.latest }}"
-            sudo -u builder -E HOME=/home/builder git push -u origin master
-          else
-            echo "AUR up to date."
-          fi
+          sudo -u builder -E HOME=/home/builder git commit -m "update: ${{ steps.versions.outputs.latest }}" || true
+          sudo -u builder -E HOME=/home/builder git push origin dev
 
       - name: Summary
         run: |
-          if [ "${{ steps.versions.outputs.current }}" = "${{ steps.versions.outputs.latest }}" ]; then
-            echo "No new version available. Current: ${{ steps.versions.outputs.current }}"
+          if [ "${{ steps.versions.outputs.changed }}" = "true" ]; then
+            echo "Built and pushed version ${{ steps.versions.outputs.latest }} to GitHub."
           else
-            echo "Published version ${{ steps.versions.outputs.latest }} to AUR and GitHub"
+            echo "No new version available. Current: ${{ steps.versions.outputs.current }}"
           fi
+
+  aur-publish:
+    needs: check-and-build
+    if: needs.check-and-build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Publish AUR package
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.2
+        with:
+          pkgname: pi-bin
+          pkgbuild: ./PKGBUILD
+          assets: |
+            .SRCINFO
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "aur: ${{ needs.check-and-build.outputs.latest }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
