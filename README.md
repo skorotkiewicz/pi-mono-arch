@@ -1,6 +1,9 @@
 # pi-bin
 
 > [!NOTE]
+> This repo moved to https://github.com/skorotkiewicz/packages-aur.
+
+> [!NOTE]
 > AI coding agent for the terminal (Arch Linux binary, pi-mono).
 
 - **Multi-architecture**: Native `x86_64` and `aarch64` support.
